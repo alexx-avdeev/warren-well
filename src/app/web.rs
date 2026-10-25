@@ -65,9 +65,13 @@ async fn status() -> impl IntoResponse {
         s
     });
     let calibrated = CONFIG.lock().await.tank.is_calibrated();
+    // Take each lock in its own statement: a guard created inside the struct
+    // literal would live for the whole expression and deadlock `display_name`.
+    let device_id = DEVICE_ID.lock().await.clone();
+    let name = display_name().await;
     Json(Status {
-        device_id: DEVICE_ID.lock().await.clone(),
-        name: display_name().await,
+        device_id,
+        name,
         fw: FIRMWARE_VERSION,
         uptime_s: uptime_s(),
         wifi_connected: net.connected,

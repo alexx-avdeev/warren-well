@@ -32,6 +32,34 @@ docs/               architecture proposal
 | Reporter | **stub**: logs the exact JSON it would POST; HTTP transport is the next step |
 | OTA | not started (partition table still single `factory` app) |
 
+## Screenshots
+
+Local web UI served by the device (simulated sensor), desktop and phone:
+
+<p>
+<img src="docs/screenshots/web-ui.png" alt="Web UI, light" width="640">
+<img src="docs/screenshots/web-ui-phone.png" alt="Web UI on a phone" width="200">
+</p>
+
+Dark mode follows the browser setting:
+
+<img src="docs/screenshots/web-ui-dark.png" alt="Web UI, dark" width="640">
+
+## First-time WiFi setup from a phone
+
+1. Install **nRF Connect for Mobile** (Android/iOS). The device advertises as
+   `tank-xxxx` whenever it has no WiFi credentials.
+2. Connect, open service `7a1e0001…`, write (UTF-8 text) the SSID to `…0002`,
+   the password to `…0003`, optionally the server URL to `…0004`.
+3. Write byte `01` to `…0009` (save + apply). Read `…0008` to see
+   `"wifi":true` and the IP.
+4. Open `http://<ip>/` on the same WiFi: the page above, with the WiFi fields
+   in the form for later changes.
+
+Known issue: while unprovisioned, BLE is only on air during the periodic WiFi
+scans (see quirks below), so the phone may need a few scan attempts. A SoftAP
+captive portal and mDNS are planned to make this smoother.
+
 ## Build, flash, monitor
 
 Toolchain: rustup stable (≥1.95), target `riscv32imac-unknown-none-elf`,
@@ -113,3 +141,6 @@ boot, on button press, and permanently while no WiFi SSID is set.
   receiving frames from the test AP (and BLE went silent). Revisit on the real
   AP with a current measurement.
 * The device does not answer ICMP ping (no ICMP socket); use HTTP to probe.
+* **Open issue:** after running unprovisioned (BLE + periodic WiFi scans) for
+  several hours the device went silent on both serial and BLE once. Under
+  investigation with a long serial capture.
