@@ -22,7 +22,7 @@ use log::info;
 use tank_core::FIRMWARE_VERSION;
 use tank_core::payload::device_id;
 
-use app::state::{BLE_WINDOW, CONFIG, DEVICE_ID};
+use app::state::{BLE_WINDOW, BOOT_ID, CONFIG, DEVICE_ID};
 
 extern crate alloc;
 
@@ -59,6 +59,7 @@ async fn main(spawner: Spawner) -> ! {
 
     // --- radios -------------------------------------------------------------
     let rng = Rng::new();
+    BOOT_ID.store(rng.random().max(1), core::sync::atomic::Ordering::Relaxed);
     let transport = BleConnector::new(peripherals.BT, Default::default()).expect("BLE connector");
     let ble_controller = ExternalController::<_, 1>::new(transport);
 
@@ -81,6 +82,7 @@ async fn main(spawner: Spawner) -> ! {
         for id in 0..app::web::WEB_TASK_POOL_SIZE {
             spawner.spawn(app::web::web_task(id, stack).unwrap());
         }
+        spawner.spawn(app::reporter::reporter_task(app::reporter::HttpReporter::new(stack)).unwrap());
         mac
     };
     #[cfg(feature = "ble-only")]
@@ -93,7 +95,6 @@ async fn main(spawner: Spawner) -> ! {
 
     // --- tasks --------------------------------------------------------------
     spawner.spawn(app::ble::ble_task(ble_controller, mac).unwrap());
-    spawner.spawn(app::reporter::reporter_task(app::reporter::LogReporter).unwrap());
     spawner.spawn(button_task(Input::new(
         peripherals.GPIO9,
         InputConfig::default().with_pull(Pull::Up),
@@ -118,7 +119,7 @@ async fn main(spawner: Spawner) -> ! {
     app::control::run(store).await
 }
 
-/// Development convenience: `WIFI_SSID`, `WIFI_PASSWORD` and `API_URL` set in
+/// Development convenience: `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL` and `API_TOKEN` set in
 /// the build environment seed the config when flash is empty, so a freshly
 /// erased board joins the network without BLE provisioning.
 fn apply_build_defaults(cfg: &mut tank_core::config::DeviceConfig) {
@@ -131,6 +132,9 @@ fn apply_build_defaults(cfg: &mut tank_core::config::DeviceConfig) {
     }
     if let Some(url) = option_env!("API_URL") {
         let _ = cfg.api_url.push_str(url);
+    }
+    if let Some(token) = option_env!("API_TOKEN") {
+        let _ = cfg.api_token.push_str(token);
     }
 }
 

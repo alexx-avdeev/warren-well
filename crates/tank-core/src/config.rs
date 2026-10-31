@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::level::tank::Tank;
 
 /// Bump when the layout changes incompatibly; old blobs are then discarded.
-pub const CONFIG_VERSION: u8 = 1;
+pub const CONFIG_VERSION: u8 = 2;
 
 pub type Ssid = String<32>;
 pub type Password = String<64>;
@@ -34,6 +34,8 @@ pub struct DeviceConfig {
     pub report_interval_s: u16,
     pub low_pct: u8,
     pub critical_pct: u8,
+    /// Version of the last config block applied from the server (0 = none).
+    pub server_config_version: u32,
 }
 
 impl Default for DeviceConfig {
@@ -56,6 +58,7 @@ impl DeviceConfig {
         report_interval_s: 300,
         low_pct: 25,
         critical_pct: 10,
+        server_config_version: 0,
     };
 
     pub fn has_wifi(&self) -> bool {
@@ -184,5 +187,61 @@ impl From<&DeviceConfig> for PublicConfig {
             low_pct: c.low_pct,
             critical_pct: c.critical_pct,
         }
+    }
+}
+
+/// Reply body of `POST /api/v1/tank_readings`. Every field is optional so the
+/// server can send as little as `{}`.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServerReply {
+    /// Unix seconds; lets the device timestamp future reports.
+    pub server_time: Option<u64>,
+    pub config: Option<ServerConfig>,
+}
+
+/// Config pushed by the server. Mirrors [`ConfigPatch`] minus credentials,
+/// plus a version so the device applies each block once.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServerConfig {
+    pub config_version: Option<u32>,
+    pub name: Option<Name>,
+    pub report_interval_s: Option<u16>,
+    pub sample_interval_s: Option<u16>,
+    pub low_pct: Option<u8>,
+    pub critical_pct: Option<u8>,
+    pub tank: Option<ServerTank>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServerTank {
+    pub empty_mm: Option<u16>,
+    pub full_mm: Option<u16>,
+    pub litres_per_mm: Option<f32>,
+}
+
+impl ServerConfig {
+    /// Apply onto `cfg` if `config_version` is newer than what was applied.
+    /// Returns true when something was applied (caller should persist).
+    pub fn apply_if_newer(&self, cfg: &mut DeviceConfig) -> bool {
+        let Some(version) = self.config_version else {
+            return false;
+        };
+        if version == cfg.server_config_version {
+            return false;
+        }
+        let patch = ConfigPatch {
+            name: self.name.clone(),
+            report_interval_s: self.report_interval_s,
+            sample_interval_s: self.sample_interval_s,
+            low_pct: self.low_pct,
+            critical_pct: self.critical_pct,
+            empty_mm: self.tank.as_ref().and_then(|t| t.empty_mm),
+            full_mm: self.tank.as_ref().and_then(|t| t.full_mm),
+            litres_per_mm: self.tank.as_ref().and_then(|t| t.litres_per_mm),
+            ..Default::default()
+        };
+        patch.apply(cfg);
+        cfg.server_config_version = version;
+        true
     }
 }

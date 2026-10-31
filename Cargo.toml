@@ -34,6 +34,7 @@ log                    = "0.4.27"
 
 embassy-net = { version = "0.9.1", features = [
   "dhcpv4",
+  "dns",
   "log",
   "medium-ethernet",
   "tcp",
@@ -93,6 +94,7 @@ embedded-storage-async = "0.4.1"
 embassy-embedded-hal   = "0.6.0"
 sequential-storage     = { version = "8.0.2", features = ["postcard"] }
 postcard        = { version = "1.1", default-features = false }
+reqwless        = { version = "0.14.0", default-features = false, features = ["log"] }
 
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html

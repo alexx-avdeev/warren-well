@@ -5,7 +5,8 @@ ultrasonic sensor, exposes it over **BLE** and a **local web UI**, and reports
 to a Ruby on Rails farm-management app over plain HTTP on the LAN.
 
 `no_std` / `no_main`: esp-hal + Embassy, no ESP-IDF C code. Design and
-decisions: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+decisions: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); server protocol:
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ## Layout
 
@@ -29,7 +30,7 @@ docs/               architecture proposal
 | WiFi station | done; reconnects, scans while unprovisioned |
 | BLE provisioning | done, tested end to end (see service table below); no pairing/PIN yet |
 | Local web UI / JSON API | done, tested; no auth (LAN only) |
-| Reporter | **stub**: logs the exact JSON it would POST; HTTP transport is the next step |
+| Reporter | done: HTTP POST per [`docs/PROTOCOL.md`](docs/PROTOCOL.md), offline queue with byte-identical retries, server config + time applied from the reply; verified against a mock server, Rails integration test pending |
 | OTA | not started (partition table still single `factory` app) |
 
 ## Screenshots
@@ -74,7 +75,7 @@ cargo test -p tank-core --target x86_64-unknown-linux-gnu \
 ```
 
 Build-time defaults for a freshly erased board (only used when flash holds no
-config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL` environment variables.
+config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL`, `API_TOKEN` environment variables.
 
 Log level: `ESP_LOG` in `.cargo/esp-config.toml` (default `info`). For a
 non-interactive capture: `stty -F /dev/ttyACM0 115200 raw -echo; timeout 30 cat /dev/ttyACM0`.
@@ -123,13 +124,15 @@ boot, on button press, and permanently while no WiFi SSID is set.
 | POST | `/api/config` | partial JSON (`ConfigPatch`), persists, reconnects WiFi if credentials changed |
 | POST | `/api/command` | `{"command":"reboot\|calibrate_full\|calibrate_empty\|factory_reset\|test_report\|ble\|save\|save_reconnect"}` |
 
-## Report payload (what the stub logs today)
+## Report payload
+
+See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the full request/response
+contract. A report looks like:
 
 ```json
-{"device_id":"f0f5bd0bece4","seq":3,"fw":"0.1.0","uptime_s":146,"rssi":-77,
- "level":{"distance_mm":360,"depth_mm":290,"percent":48.3,"litres":104.4,
-          "state":"ok","event":null},
- "sampled_at_uptime_s":141}
+{"device_id":"f0f5bd0bece4","boot_id":1810345540,"seq":3,"fw":"0.1.0","uptime_s":46,"rssi":-79,
+ "level":{"distance_mm":196,"depth_mm":444,"percent":75.9,"litres":133.2,"state":"ok","event":null},
+ "sampled_at_uptime_s":41,"sampled_at":1793465985}
 ```
 
 ## Known quirks (esp-radio 1.0.0-beta.1, ESP32-C6)

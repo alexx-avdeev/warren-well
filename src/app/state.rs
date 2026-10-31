@@ -1,6 +1,8 @@
 //! Shared state between tasks. All of it is `static` so any task can reach it
 //! without threading references through constructors.
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use embassy_net::Ipv4Address;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as Raw;
 use embassy_sync::channel::Channel;
@@ -37,6 +39,41 @@ pub static BLE_WINDOW: Signal<Raw, ()> = Signal::new();
 
 /// Ask the reporter to send a report now.
 pub static REPORT_NOW: Signal<Raw, ()> = Signal::new();
+
+/// Random id of this boot, set once in `main`.
+pub static BOOT_ID: AtomicU32 = AtomicU32::new(0);
+
+/// Unix time at boot (`server_time - uptime`) learned from the server; 0 = unknown.
+/// u32 is fine until 2106 and avoids 64-bit atomics on RV32.
+pub static TIME_OFFSET: AtomicU32 = AtomicU32::new(0);
+
+/// Outcome of the last report attempt, for the UIs.
+pub static REPORT: Watch<Raw, ReportStatus, 4> = Watch::new();
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReportStatus {
+    pub last_ok_uptime_s: Option<u64>,
+    pub last_error: Option<ReportError>,
+    pub queued: u8,
+    pub sent: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportError {
+    NoServer,
+    Offline,
+    Connect,
+    Unauthorized,
+    Rejected(u16),
+    ServerError(u16),
+    Timeout,
+}
+
+/// Unix seconds now, if the server has told us the time.
+pub fn unix_now() -> Option<u64> {
+    let off = TIME_OFFSET.load(Ordering::Relaxed);
+    (off != 0).then(|| off as u64 + uptime_s())
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LevelSnapshot {

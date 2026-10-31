@@ -10,12 +10,17 @@ use crate::level::{Event, Level, LevelState};
 #[derive(Debug, Clone, Serialize)]
 pub struct Report<'a> {
     pub device_id: &'a str,
+    /// Random per boot; `seq` restarts at 1 on every boot, so
+    /// `(device_id, boot_id, seq)` identifies a report.
+    pub boot_id: u32,
     pub seq: u32,
     pub fw: &'a str,
     pub uptime_s: u64,
     pub rssi: Option<i32>,
     pub level: LevelReport,
     pub sampled_at_uptime_s: u64,
+    /// Unix seconds of the sample, once the server has told us the time.
+    pub sampled_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

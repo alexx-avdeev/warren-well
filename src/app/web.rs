@@ -20,7 +20,7 @@ use tank_core::FIRMWARE_VERSION;
 use tank_core::config::{ConfigPatch, PublicConfig};
 use tank_core::level::{Event, Level, LevelState};
 
-use crate::app::state::{COMMANDS, CONFIG, Command, DEVICE_ID, LEVEL, NET, display_name, uptime_s};
+use crate::app::state::{COMMANDS, CONFIG, Command, DEVICE_ID, LEVEL, NET, REPORT, ReportError, display_name, unix_now, uptime_s};
 
 const INDEX_HTML: &str = include_str!("web/index.html");
 
@@ -42,6 +42,31 @@ struct Status {
     sample_no: u32,
     sampled_uptime_s: u64,
     calibrated: bool,
+    unix_time: Option<u64>,
+    report: ReportInfo,
+}
+
+#[derive(Serialize)]
+struct ReportInfo {
+    sent: u32,
+    queued: u8,
+    last_ok_uptime_s: Option<u64>,
+    last_error: Option<String<24>>,
+}
+
+fn report_error_name(e: ReportError) -> String<24> {
+    use core::fmt::Write;
+    let mut s = String::new();
+    let _ = match e {
+        ReportError::NoServer => s.push_str("no_server").ok(),
+        ReportError::Offline => s.push_str("offline").ok(),
+        ReportError::Connect => s.push_str("connect_failed").ok(),
+        ReportError::Unauthorized => s.push_str("unauthorized").ok(),
+        ReportError::Timeout => s.push_str("timeout").ok(),
+        ReportError::Rejected(c) => write!(s, "rejected_{c}").ok(),
+        ReportError::ServerError(c) => write!(s, "server_error_{c}").ok(),
+    };
+    s
 }
 
 #[derive(Deserialize)]
@@ -65,6 +90,7 @@ async fn status() -> impl IntoResponse {
         s
     });
     let calibrated = CONFIG.lock().await.tank.is_calibrated();
+    let rep = REPORT.try_get().unwrap_or_default();
     // Take each lock in its own statement: a guard created inside the struct
     // literal would live for the whole expression and deadlock `display_name`.
     let device_id = DEVICE_ID.lock().await.clone();
@@ -84,6 +110,13 @@ async fn status() -> impl IntoResponse {
         sample_no: snap.sample_no,
         sampled_uptime_s: snap.uptime_s,
         calibrated,
+        unix_time: unix_now(),
+        report: ReportInfo {
+            sent: rep.sent,
+            queued: rep.queued,
+            last_ok_uptime_s: rep.last_ok_uptime_s,
+            last_error: rep.last_error.map(report_error_name),
+        },
     })
 }
 
