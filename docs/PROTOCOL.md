@@ -1,7 +1,47 @@
-# Device ↔ server protocol v1 — `tank_readings`
+# Device ↔ server protocol v1.1 — enrolment + `tank_readings`
 
 Agreed between the firmware (this repo) and the Rails farm-management app on
 2026-10-31. Plain HTTP on the LAN; one request per TCP connection.
+
+`api_url` on the device is the API **base**, e.g. `http://10.10.1.16:3000/api/v1`;
+the device appends `/devices/enroll` and `/tank_readings`. A legacy full
+`…/tank_readings` URL is accepted and normalised.
+
+## Zero-touch enrolment
+
+The only thing a person enters on the device is WiFi (the base URL is a
+build-time default for the farm, overridable over BLE/web). Tokens are never
+typed: the device asks for one and the admin approves it in the farm app.
+
+```
+POST <base>/devices/enroll            no Authorization header
+Content-Type: application/json
+{"device_id":"f0f5bd0bece4","kind":"water_tank","fw":"0.1.0","name":"tank-ece4",
+ "hw":"esp32c6-devkitc-1","simulated":true,"boot_id":1810345540}
+```
+
+| Status | Body | Device action |
+|---|---|---|
+| 201 | `{"api_token":"<32 hex>","status":"pending","retry_s":300}` | persist token, start reporting; UI shows "waiting for approval" |
+| 429 | `{"retry_s":N}` | wait N s, retry |
+| 400/422 | error | log, retry with backoff (firmware bug) |
+| 5xx / no connection | | retry with backoff 10 s → 5 min |
+
+The device enrols whenever it has a base URL and no token: first boot, after a
+factory reset, after a re-enrol command (BLE command 7, web `enroll`), or after
+the token is declared dead (below). Re-enrolling an approved device never
+revokes its old token; the admin approves the swap.
+
+While the token is pending, `POST /tank_readings` answers
+`403 {"error":"pending_approval"}`: the device keeps the newest reports queued
+and retries every 5 min. After approval the next retry gets 201 plus `config`,
+which carries the tank name the admin chose, so the device renames itself.
+
+`401` means the token is unknown or revoked. The device retries after 60 s;
+after three consecutive 401s it forgets the token and enrols again, which shows
+up as a re-enrolment request in the admin UI.
+
+
 
 ## Request
 
@@ -57,7 +97,9 @@ Unknown keys are ignored by the server. Body stays under 512 bytes.
 |---|---|---|
 | 201 | stored | apply reply, drop from queue |
 | 200 | duplicate `(device, boot_id, seq)`; same body as the 201 | same as 201 |
-| 401 | bad or missing token | keep report, mark `unauthorized` in the UIs, retry every 5 min |
+| 401 | bad or missing token | keep report, mark `unauthorized`, retry in 60 s; 3 in a row → forget token and re-enrol |
+| 403 | token pending approval | keep report, mark `pending_approval`, retry every 5 min |
+| 429 | rate limited | wait `retry_s` |
 | 422 | invalid body or `device_id` ≠ tank's | drop the report, log the body |
 | 5xx, connect error, timeout | | keep, retry with backoff 10 s → 5 min |
 
@@ -86,13 +128,11 @@ Body of 200/201, `Content-Length` set, no chunking, no gzip, ≤ 1 KB:
 * `firmware: {...}` is reserved for OTA and not sent yet.
 * A reply that fails to parse is treated as success (the 2xx is what counts).
 
-## Enrolment
+## Manual enrolment (fallback)
 
-1. Operator creates a water tank in the Rails UI and enters the `device_id`
-   shown on the device's status page. The UI generates the `api_token`.
-2. Operator writes `api_url` and `api_token` to the device over BLE
-   (characteristics `…0004`, `…0005`) or the device web UI.
-3. The device starts reporting; the first report proves the link.
+The token characteristic `…0005` and the web form still accept a token typed
+by hand, for people who prefer to create the tank first in the Rails UI and
+copy its token. The automatic flow above is the default.
 
 ## Device-side implementation notes
 

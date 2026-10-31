@@ -4,7 +4,7 @@
 //! * `GET  /api/status`   – live level / network status
 //! * `GET  /api/config`   – config with secrets masked
 //! * `POST /api/config`   – JSON `ConfigPatch`; applies, persists, reconnects WiFi if needed
-//! * `POST /api/command`  – `{"command":"reboot|calibrate_full|calibrate_empty|factory_reset|test_report|ble"}`
+//! * `POST /api/command`  – `{"command":"reboot|calibrate_full|calibrate_empty|factory_reset|test_report|ble|enroll"}`
 //!
 //! No authentication yet: the device is only reachable on the farm LAN.
 
@@ -52,6 +52,7 @@ struct ReportInfo {
     queued: u8,
     last_ok_uptime_s: Option<u64>,
     last_error: Option<String<24>>,
+    enrolled: bool,
 }
 
 fn report_error_name(e: ReportError) -> String<24> {
@@ -61,7 +62,10 @@ fn report_error_name(e: ReportError) -> String<24> {
         ReportError::NoServer => s.push_str("no_server").ok(),
         ReportError::Offline => s.push_str("offline").ok(),
         ReportError::Connect => s.push_str("connect_failed").ok(),
+        ReportError::PendingApproval => s.push_str("pending_approval").ok(),
+        ReportError::EnrolFailed => s.push_str("enrol_failed").ok(),
         ReportError::Unauthorized => s.push_str("unauthorized").ok(),
+        ReportError::RateLimited => s.push_str("rate_limited").ok(),
         ReportError::Timeout => s.push_str("timeout").ok(),
         ReportError::Rejected(c) => write!(s, "rejected_{c}").ok(),
         ReportError::ServerError(c) => write!(s, "server_error_{c}").ok(),
@@ -116,6 +120,7 @@ async fn status() -> impl IntoResponse {
             queued: rep.queued,
             last_ok_uptime_s: rep.last_ok_uptime_s,
             last_error: rep.last_error.map(report_error_name),
+            enrolled: rep.enrolled,
         },
     })
 }

@@ -48,6 +48,16 @@ pub async fn run(mut store: ConfigStore) -> ! {
             }
             Command::TestReport => REPORT_NOW.signal(()),
             Command::OpenBleWindow => BLE_WINDOW.signal(()),
+            Command::Enroll => {
+                let cfg = {
+                    let mut cfg = CONFIG.lock().await;
+                    cfg.api_token.clear();
+                    cfg.clone()
+                };
+                store.save(&cfg).await;
+                info!("enrol: token cleared, re-enrolling");
+                REPORT_NOW.signal(());
+            }
         }
     }
 }

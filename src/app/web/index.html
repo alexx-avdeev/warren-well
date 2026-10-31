@@ -46,6 +46,7 @@
         <span>Depth</span><b><span id="depth">–</span> mm</b>
         <span>Distance</span><b><span id="mm">–</span> mm</b>
         <span>WiFi</span><b id="wifi">–</b>
+        <span>Server</span><b id="server">–</b>
         <span>Sample</span><b id="sample">–</b>
       </div>
     </div>
@@ -56,8 +57,8 @@
       <label>Device name <input name="name" maxlength="32"></label>
       <label>WiFi SSID <input name="wifi_ssid" maxlength="32"></label>
       <label>WiFi password <input name="wifi_password" type="password" maxlength="64" placeholder="(unchanged)"></label>
-      <label>Server URL <input name="api_url" maxlength="128" placeholder="http://192.168.1.10:3000/api/v1/tank_readings"></label>
-      <label>Server token <input name="api_token" type="password" maxlength="64" placeholder="(unchanged)"></label>
+      <label>Server URL (base) <input name="api_url" maxlength="128" placeholder="http://192.168.1.10:3000/api/v1"></label>
+      <label>Server token (issued automatically) <input name="api_token" type="password" maxlength="64" placeholder="(unchanged)"></label>
       <label>Litres per mm <input name="litres_per_mm" type="number" step="0.0001" min="0"></label>
       <label>Empty distance (mm) <input name="empty_mm" type="number" min="0" max="4500"></label>
       <label>Full distance (mm) <input name="full_mm" type="number" min="0" max="4500"></label>
@@ -70,6 +71,7 @@
         <button type="button" data-cmd="calibrate_full">Mark as FULL</button>
         <button type="button" data-cmd="calibrate_empty">Mark as EMPTY</button>
         <button type="button" data-cmd="test_report">Send test report</button>
+        <button type="button" data-cmd="enroll" data-confirm="Forget the server token and enrol again?">Re-enrol</button>
         <button type="button" data-cmd="ble">Open Bluetooth</button>
         <button type="button" data-cmd="reboot">Reboot</button>
         <button type="button" class="danger" data-cmd="factory_reset" data-confirm="Erase all settings and reboot?">Factory reset</button>
@@ -95,6 +97,11 @@ async function refresh() {
     const st = $('state'); st.textContent = s.state + (s.calibrated ? '' : ' (uncalibrated)'); st.className = 'state ' + s.state;
     $('event').textContent = s.last_event ? 'last event: ' + s.last_event : '';
     $('wifi').textContent = s.wifi_connected ? `${s.ip} (${s.rssi} dBm)` : 'disconnected';
+    const r = s.report || {};
+    const srv = { no_server: 'not configured', offline: 'offline', pending_approval: 'enrolled, waiting for approval in the farm app',
+                  unauthorized: 'token rejected', enrol_failed: 'enrolment failed, retrying', connect_failed: 'unreachable', timeout: 'timeout' };
+    $('server').textContent = r.last_error ? (srv[r.last_error] || r.last_error) + ` · ${r.queued} queued`
+                                           : (r.sent ? `ok · ${r.sent} sent` : (r.enrolled ? 'enrolled' : 'not enrolled'));
     $('sample').textContent = `#${s.sample_no}, ${s.uptime_s - s.sampled_uptime_s}s ago`;
   } catch (e) { $('meta').textContent = 'offline'; }
 }

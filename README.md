@@ -30,7 +30,8 @@ docs/               architecture proposal
 | WiFi station | done; reconnects, scans while unprovisioned |
 | BLE provisioning | done, tested end to end (see service table below); no pairing/PIN yet |
 | Local web UI / JSON API | done, tested; no auth (LAN only) |
-| Reporter | done: HTTP POST per [`docs/PROTOCOL.md`](docs/PROTOCOL.md), offline queue with byte-identical retries, server config + time applied from the reply; verified against a mock server, Rails integration test pending |
+| Reporter | done: HTTP POST per [`docs/PROTOCOL.md`](docs/PROTOCOL.md), offline queue with byte-identical retries, server config + time applied from the reply; verified against the real Rails endpoint |
+| Enrolment | done: zero-touch — device requests a token from the server, admin approves in the farm app; 403/401 handling, self re-enrol |
 | OTA | not started (partition table still single `factory` app) |
 
 ## Screenshots
@@ -53,8 +54,10 @@ Dark mode follows the browser setting:
 2. Connect, open service `7a1e0001…`, write (UTF-8 text) the SSID to `…0002`,
    the password to `…0003`, optionally the server URL to `…0004`.
 3. Write byte `01` to `…0009` (save + apply). Read `…0008` to see
-   `"wifi":true` and the IP.
-4. Open `http://<ip>/` on the same WiFi: the page above, with the WiFi fields
+   `"wifi":true`, the IP and `"srv":"pending"`.
+4. The device enrols itself with the farm app; approve it there (it appears
+   with this name and device id). Nothing else to type.
+5. Open `http://<ip>/` on the same WiFi: the page above, with the WiFi fields
    in the form for later changes.
 
 Known issue: while unprovisioned, BLE is only on air during the periodic WiFi
@@ -75,7 +78,7 @@ cargo test -p tank-core --target x86_64-unknown-linux-gnu \
 ```
 
 Build-time defaults for a freshly erased board (only used when flash holds no
-config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL`, `API_TOKEN` environment variables.
+config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL` (API base, e.g. `http://10.10.1.16:3000/api/v1`), `API_TOKEN` (optional; normally the device enrols itself) environment variables.
 
 Log level: `ESP_LOG` in `.cargo/esp-config.toml` (default `info`). For a
 non-interactive capture: `stty -F /dev/ttyACM0 115200 raw -echo; timeout 30 cat /dev/ttyACM0`.
@@ -112,7 +115,7 @@ boot, on button press, and permanently while no WiFi SSID is set.
 | `…0006` | 8 B LE | R/W | `empty_mm u16, full_mm u16, litres_per_mm f32` |
 | `…0007` | 6 B LE | R/W | `sample_s u16, report_s u16, low_pct u8, critical_pct u8` |
 | `…0008` | utf8 JSON ≤160 | R/notify | live status |
-| `…0009` | u8 | W | 1 save+apply, 2 reboot, 3 calibrate full, 4 calibrate empty, 5 factory reset, 6 test report |
+| `…0009` | u8 | W | 1 save+apply, 2 reboot, 3 calibrate full, 4 calibrate empty, 5 factory reset, 6 test report, 7 re-enrol |
 
 ## HTTP API (port 80)
 
@@ -122,7 +125,7 @@ boot, on button press, and permanently while no WiFi SSID is set.
 | GET | `/api/status` | live level, state, network |
 | GET | `/api/config` | config with secrets masked |
 | POST | `/api/config` | partial JSON (`ConfigPatch`), persists, reconnects WiFi if credentials changed |
-| POST | `/api/command` | `{"command":"reboot\|calibrate_full\|calibrate_empty\|factory_reset\|test_report\|ble\|save\|save_reconnect"}` |
+| POST | `/api/command` | `{"command":"reboot\|calibrate_full\|calibrate_empty\|factory_reset\|test_report\|ble\|enroll\|save\|save_reconnect"}` |
 
 ## Report payload
 

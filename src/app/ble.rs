@@ -14,7 +14,7 @@
 //! | 5 | …0006        | 8 bytes LE     | read/write  | empty_mm u16, full_mm u16, litres_per_mm f32 |
 //! | 6 | …0007        | 6 bytes LE     | read/write  | sample_s u16, report_s u16, low_pct u8, critical_pct u8 |
 //! | 7 | …0008        | utf8 ≤160 JSON | read/notify | live status |
-//! | 8 | …0009        | u8             | write       | command: 1 save+apply, 2 reboot, 3 cal full, 4 cal empty, 5 factory reset, 6 test report |
+//! | 8 | …0009        | u8             | write       | command: 1 save+apply, 2 reboot, 3 cal full, 4 cal empty, 5 factory reset, 6 test report, 7 re-enrol |
 //!
 //! Writes to 1-6 change the in-memory config immediately; command 1 persists
 //! them and reconnects WiFi.
@@ -322,6 +322,16 @@ async fn status_json() -> String<160> {
         );
     }
     let _ = write!(s, ",\"wifi\":{}", net.connected);
+    let rep = crate::app::state::REPORT.try_get().unwrap_or_default();
+    let srv = match rep.last_error {
+        None if rep.sent > 0 => "ok",
+        None => "idle",
+        Some(crate::app::state::ReportError::PendingApproval) => "pending",
+        Some(crate::app::state::ReportError::Unauthorized) => "unauth",
+        Some(crate::app::state::ReportError::NoServer) => "none",
+        Some(_) => "err",
+    };
+    let _ = write!(s, ",\"srv\":\"{srv}\"");
     if let Some(ip) = net.ip {
         let _ = write!(s, ",\"ip\":\"{ip}\"");
     }

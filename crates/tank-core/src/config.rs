@@ -24,7 +24,9 @@ pub struct DeviceConfig {
     pub name: Name,
     pub wifi_ssid: Ssid,
     pub wifi_password: Password,
-    /// Base URL of the Rails ingest endpoint, e.g. `http://192.168.1.10:3000/api/v1/tank_readings`.
+    /// Base URL of the server API, e.g. `http://192.168.1.10:3000/api/v1`.
+    /// The device appends `/tank_readings` and `/devices/enroll`. A legacy
+    /// full `.../tank_readings` URL is accepted too (see [`DeviceConfig::api_base`]).
     pub api_url: Url,
     pub api_token: Token,
     pub tank: Tank,
@@ -67,6 +69,16 @@ impl DeviceConfig {
 
     pub fn has_server(&self) -> bool {
         !self.api_url.is_empty()
+    }
+
+    /// `api_url` normalised to a base: trailing `/` and a legacy trailing
+    /// `/tank_readings` removed.
+    pub fn api_base(&self) -> &str {
+        let mut base = self.api_url.as_str().trim_end_matches('/');
+        if let Some(stripped) = base.strip_suffix("/tank_readings") {
+            base = stripped;
+        }
+        base.trim_end_matches('/')
     }
 
     /// Clamp user-supplied values into sane ranges.
@@ -243,5 +255,53 @@ impl ServerConfig {
         patch.apply(cfg);
         cfg.server_config_version = version;
         true
+    }
+}
+
+/// Body of `POST /api/v1/devices/enroll` (no authentication).
+#[derive(Debug, Clone, Serialize)]
+pub struct EnrolRequest<'a> {
+    pub device_id: &'a str,
+    pub kind: &'a str,
+    pub fw: &'a str,
+    pub name: &'a str,
+    pub hw: &'a str,
+    pub simulated: bool,
+    pub boot_id: u32,
+}
+
+/// Reply to an enrolment: a (pending) token and how long to wait.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct EnrolReply {
+    pub api_token: Option<Token>,
+    pub status: Option<String<16>>,
+    pub retry_s: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_base_strips_legacy_suffix() {
+        let mut c = DeviceConfig::default();
+        c.api_url = String::try_from("http://h:3000/api/v1/tank_readings").unwrap();
+        assert_eq!(c.api_base(), "http://h:3000/api/v1");
+        c.api_url = String::try_from("http://h:3000/api/v1/").unwrap();
+        assert_eq!(c.api_base(), "http://h:3000/api/v1");
+        c.api_url = String::try_from("http://h:3000/api/v1").unwrap();
+        assert_eq!(c.api_base(), "http://h:3000/api/v1");
+    }
+
+    #[test]
+    fn patch_sanitizes_thresholds() {
+        let mut c = DeviceConfig::default();
+        let p = ConfigPatch {
+            low_pct: Some(5),
+            critical_pct: Some(50),
+            ..Default::default()
+        };
+        p.apply(&mut c);
+        assert!(c.low_pct > c.critical_pct);
     }
 }

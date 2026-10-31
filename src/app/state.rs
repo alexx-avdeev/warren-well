@@ -56,6 +56,8 @@ pub struct ReportStatus {
     pub last_error: Option<ReportError>,
     pub queued: u8,
     pub sent: u32,
+    /// Device holds a token (approved or pending).
+    pub enrolled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +65,12 @@ pub enum ReportError {
     NoServer,
     Offline,
     Connect,
+    /// Enrolled, waiting for an admin to approve the device on the server.
+    PendingApproval,
+    /// Enrolment itself failed (bad reply or rejected); will retry.
+    EnrolFailed,
     Unauthorized,
+    RateLimited,
     Rejected(u16),
     ServerError(u16),
     Timeout,
@@ -107,6 +114,8 @@ pub enum Command {
     FactoryReset,
     TestReport,
     OpenBleWindow,
+    /// Forget the server token and enrol again.
+    Enroll,
 }
 
 impl Command {
@@ -124,6 +133,7 @@ impl Command {
             "factory_reset" => Command::FactoryReset,
             "test_report" => Command::TestReport,
             "ble" => Command::OpenBleWindow,
+            "enroll" => Command::Enroll,
             _ => return None,
         })
     }
@@ -139,6 +149,7 @@ impl Command {
             4 => Command::CalibrateEmpty,
             5 => Command::FactoryReset,
             6 => Command::TestReport,
+            7 => Command::Enroll,
             _ => return None,
         })
     }
