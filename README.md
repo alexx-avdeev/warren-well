@@ -32,7 +32,7 @@ docs/               architecture proposal
 | Local web UI / JSON API | done, tested; no auth (LAN only) |
 | Reporter | done: HTTP POST per [`docs/PROTOCOL.md`](docs/PROTOCOL.md), offline queue with byte-identical retries, server config + time applied from the reply; verified against the real Rails endpoint |
 | Enrolment | done: zero-touch — device requests a token from the server, admin approves in the farm app; 403/401 handling, self re-enrol |
-| mDNS | implemented: answers `tank-xxxx.local`, advertises the web UI as `_http._tcp`, finds the farm app via `_farmos._tcp` when no server URL is set (see below); codec host-tested against a real Avahi reply, on-device run pending |
+| mDNS | implemented: answers `tank-xxxx.local`, advertises the web UI as `_http._tcp`, finds the farm app via `_farmos._tcp` when no server URL is set (see below); verified on hardware against the farm app: configured URL, discovery, server outage and recovery |
 | OTA | not started (partition table still single `factory` app) |
 
 ## Screenshots
@@ -79,7 +79,7 @@ cargo test -p tank-core --target x86_64-unknown-linux-gnu \
 ```
 
 Build-time defaults for a freshly erased board (only used when flash holds no
-config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL` (API base, e.g. `http://10.10.1.16:3000/api/v1`), `API_TOKEN` (optional; normally the device enrols itself) environment variables.
+config): `WIFI_SSID`, `WIFI_PASSWORD`, `API_URL` (API base, e.g. `http://10.10.1.16:4000/api/v1`; leave unset to discover the server via mDNS), `API_TOKEN` (optional; normally the device enrols itself) environment variables.
 
 Log level: `ESP_LOG` in `.cargo/esp-config.toml` (default `info`). For a
 non-interactive capture: `stty -F /dev/ttyACM0 115200 raw -echo; timeout 30 cat /dev/ttyACM0`.
@@ -158,13 +158,13 @@ development):
   <name>farmos</name>
   <service>
     <type>_farmos._tcp</type>
-    <port>3000</port>
+    <port>4000</port>
     <txt-record>base=/api/v1</txt-record>
   </service>
 </service-group>
 ```
 
-Quick test without a file: `avahi-publish -s farmos _farmos._tcp 3000 base=/api/v1`.
+Quick test without a file: `avahi-publish -s farmos _farmos._tcp 4000 base=/api/v1`.
 
 ## Report payload
 

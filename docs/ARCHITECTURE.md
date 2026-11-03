@@ -173,7 +173,7 @@ history can be recomputed.
 ### Option A — Direct HTTP POST to a Rails JSON endpoint (**chosen**)
 
 ```
-POST http://<rails-host-or-ip>:3000/api/v1/tank_readings
+POST http://<rails-host-or-ip>:4000/api/v1/tank_readings
 Authorization: Bearer <per-device token>
 Content-Type: application/json
 
@@ -392,4 +392,4 @@ Still open (none block phase 1):
 | 3 ✅ | BLE provisioning service with calibrate commands; local web UI (no pairing / no HTTP auth yet) | management |
 | 4 | OTA partitions + update flow | field maintainability |
 | 5 | (as needed) light/deep sleep if phase 2 current is too high, DS18B20 + I2C sensors, MQTT reporter, SoftAP portal, TLS | scale |
-| B ◐ | mDNS: `tank-xxxx.local` + `_http._tcp` responder, `_farmos._tcp` browser for server discovery — host-tested incl. a captured Avahi reply; on-device run pending | zero-config |
+| B ✅ | mDNS: `tank-xxxx.local` + `_http._tcp` responder, `_farmos._tcp` browser for server discovery — verified on hardware against the farm app (2026-11-03) | zero-config |

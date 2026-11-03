@@ -333,6 +333,9 @@ pub async fn reporter_task(mut http: HttpReporter) -> ! {
         status.queued = queue.len() as u8;
 
         if base.is_empty() {
+            // Nothing configured and nothing found yet: make the mDNS task look
+            // now rather than at its next idle tick.
+            REDISCOVER.signal(());
             if let Some(b) = queue.back() {
                 info!("report (no server configured): {b}");
             }

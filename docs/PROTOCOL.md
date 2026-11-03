@@ -3,7 +3,7 @@
 Agreed between the firmware (this repo) and the Rails farm-management app on
 2026-10-31. Plain HTTP on the LAN; one request per TCP connection.
 
-`api_url` on the device is the API **base**, e.g. `http://10.10.1.16:3000/api/v1`;
+`api_url` on the device is the API **base**, e.g. `http://10.10.1.16:4000/api/v1`;
 the device appends `/devices/enroll` and `/tank_readings`. A legacy full
 `…/tank_readings` URL is accepted and normalised.
 
@@ -51,13 +51,14 @@ Agreed 2026-11-03. The server host advertises, through avahi-daemon:
 | Record | Value |
 |---|---|
 | service type | `_farmos._tcp.local`, instance name `farmos` |
-| SRV | the host's own mDNS name (e.g. `fluteai.local`) and the port Rails listens on |
+| SRV | the host's own mDNS name (e.g. `fluteai.local`) and the port Rails listens on (4000 in the farm setup) |
 | TXT | `base=/api/v1` (path prefix the device appends `/tank_readings` and `/devices/enroll` to); unknown keys such as `v=1` are ignored |
 | A | the host's IPv4 on that interface; AAAA is published too and ignored by the device |
 
 Device side, only when `api_url` is empty:
 
-* Browse with a PTR query for `_farmos._tcp.local` every 5 s until an
+* Browse with a PTR query for `_farmos._tcp.local` every 5 s (starting as soon
+  as the URL is empty and a report is due) until an
   instance with SRV + TXT + A is known. Avahi puts SRV/TXT/A in the additional
   section of the PTR answer, so one round trip is enough; if any piece is
   missing the device asks for it explicitly (SRV/TXT for the instance, then A
@@ -76,7 +77,7 @@ Nothing in the HTTP exchange differs between a discovered and a configured URL.
 ## Request
 
 ```
-POST <api_url>                       e.g. http://10.10.1.16:3000/api/v1/tank_readings
+POST <api_url>                       e.g. http://10.10.1.16:4000/api/v1/tank_readings
 Host: <host>
 Authorization: Bearer <api_token>    32 lowercase hex chars, issued per tank in the Rails UI
 Content-Type: application/json

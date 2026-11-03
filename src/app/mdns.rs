@@ -165,9 +165,11 @@ pub async fn mdns_task(stack: Stack<'static>) -> ! {
                     }
                 }
                 Either4::Third(()) => {
-                    info!("mdns: re-discovery requested");
-                    browser.reset();
-                    next_browse = Instant::now();
+                    if browsing().await {
+                        info!("mdns: re-discovery requested");
+                        browser.reset();
+                        next_browse = Instant::now();
+                    }
                 }
                 Either4::Fourth(()) => {
                     if browsing().await {

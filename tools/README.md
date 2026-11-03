@@ -28,7 +28,7 @@ mDNS checks from the host (needs `avahi-daemon avahi-utils`; avahi picks up
 ```sh
 avahi-resolve -4 -n tank-ece4.local            # device answers for its name
 avahi-browse -rpt _http._tcp                   # device's web UI advert
-avahi-publish -s farmos _farmos._tcp 3000 base=/api/v1   # fake farm server
+avahi-publish -s farmos _farmos._tcp 4000 base=/api/v1   # fake farm server (or farm_management/bin/mdns)
 ```
 
 Note: the Intel iwlwifi AP did not deliver frames to the device while WiFi
