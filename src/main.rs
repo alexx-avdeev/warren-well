@@ -30,7 +30,8 @@ extern crate alloc;
 esp_bootloader_esp_idf::esp_app_desc!();
 
 /// Sockets: 2 web listeners + DHCP + DNS + 1 spare for the future HTTP client.
-const STACK_SOCKETS: usize = app::web::WEB_TASK_POOL_SIZE + 3;
+// web servers + reporter TCP + DNS + DHCP + mDNS UDP
+const STACK_SOCKETS: usize = app::web::WEB_TASK_POOL_SIZE + 4;
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -83,6 +84,7 @@ async fn main(spawner: Spawner) -> ! {
             spawner.spawn(app::web::web_task(id, stack).unwrap());
         }
         spawner.spawn(app::reporter::reporter_task(app::reporter::HttpReporter::new(stack)).unwrap());
+        spawner.spawn(app::mdns::mdns_task(stack).unwrap());
         mac
     };
     #[cfg(feature = "ble-only")]

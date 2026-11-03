@@ -22,5 +22,14 @@ sudo dnsmasq -C tools/hotspot/dnsmasq.conf
 sudo pkill hostapd; sudo pkill -f tools/hotspot/dnsmasq.conf; sudo ip addr flush dev wlo1
 ```
 
+mDNS checks from the host (needs `avahi-daemon avahi-utils`; avahi picks up
+`wlo1` automatically once it has an address):
+
+```sh
+avahi-resolve -4 -n tank-ece4.local            # device answers for its name
+avahi-browse -rpt _http._tcp                   # device's web UI advert
+avahi-publish -s farmos _farmos._tcp 3000 base=/api/v1   # fake farm server
+```
+
 Note: the Intel iwlwifi AP did not deliver frames to the device while WiFi
 power save was enabled; the firmware currently runs with power save off.

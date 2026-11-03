@@ -50,6 +50,31 @@ pub static TIME_OFFSET: AtomicU32 = AtomicU32::new(0);
 /// Outcome of the last report attempt, for the UIs.
 pub static REPORT: Watch<Raw, ReportStatus, 4> = Watch::new();
 
+/// Farm server found on the LAN via mDNS (`_farmos._tcp`), used when no
+/// server URL is configured. `None` = nothing found (yet).
+pub static DISCOVERED: Watch<Raw, Option<Discovered>, 4> = Watch::new();
+
+/// Ask the mDNS task to look for the server again (the known address failed).
+pub static REDISCOVER: Signal<Raw, ()> = Signal::new();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Discovered {
+    pub ip: Ipv4Address,
+    pub port: u16,
+    /// Path prefix such as `/api/v1` (may be empty).
+    pub base: String<{ tank_core::mdns::MAX_BASE }>,
+}
+
+impl Discovered {
+    /// `http://ip:port/base`
+    pub fn url<const N: usize>(&self) -> String<N> {
+        use core::fmt::Write;
+        let mut s = String::new();
+        let _ = write!(s, "http://{}:{}{}", self.ip, self.port, self.base);
+        s
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReportStatus {
     pub last_ok_uptime_s: Option<u64>,
@@ -58,6 +83,8 @@ pub struct ReportStatus {
     pub sent: u32,
     /// Device holds a token (approved or pending).
     pub enrolled: bool,
+    /// The server address in use came from mDNS discovery, not the config.
+    pub discovered: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +185,16 @@ impl Command {
 /// Seconds since boot.
 pub fn uptime_s() -> u64 {
     embassy_time::Instant::now().as_secs()
+}
+
+/// Fixed mDNS hostname label, `tank-<last 4 of mac>` (the configured name may
+/// contain spaces and changes; a hostname must not).
+pub async fn mdns_hostname() -> String<16> {
+    let id = DEVICE_ID.lock().await;
+    let mut s: String<16> = String::new();
+    let _ = s.push_str("tank-");
+    let _ = s.push_str(&id[id.len().saturating_sub(4)..]);
+    s
 }
 
 /// Advertised / displayed device name: configured name or `tank-<last 4 of mac>`.

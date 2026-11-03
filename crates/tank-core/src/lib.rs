@@ -8,6 +8,7 @@
 
 pub mod config;
 pub mod level;
+pub mod mdns;
 pub mod payload;
 
 /// Firmware version reported to the server and shown in the UIs.

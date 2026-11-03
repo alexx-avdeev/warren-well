@@ -32,6 +32,7 @@ docs/               architecture proposal
 | Local web UI / JSON API | done, tested; no auth (LAN only) |
 | Reporter | done: HTTP POST per [`docs/PROTOCOL.md`](docs/PROTOCOL.md), offline queue with byte-identical retries, server config + time applied from the reply; verified against the real Rails endpoint |
 | Enrolment | done: zero-touch — device requests a token from the server, admin approves in the farm app; 403/401 handling, self re-enrol |
+| mDNS | implemented: answers `tank-xxxx.local`, advertises the web UI as `_http._tcp`, finds the farm app via `_farmos._tcp` when no server URL is set (see below); codec host-tested against a real Avahi reply, on-device run pending |
 | OTA | not started (partition table still single `factory` app) |
 
 ## Screenshots
@@ -122,10 +123,48 @@ boot, on button press, and permanently while no WiFi SSID is set.
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/` | single-page UI |
-| GET | `/api/status` | live level, state, network |
+| GET | `/api/status` | live level, state, network, server in use (`server_url`, `server_source` = `config`/`mdns`/`none`, `mdns_name`) |
 | GET | `/api/config` | config with secrets masked |
 | POST | `/api/config` | partial JSON (`ConfigPatch`), persists, reconnects WiFi if credentials changed |
 | POST | `/api/command` | `{"command":"reboot\|calibrate_full\|calibrate_empty\|factory_reset\|test_report\|ble\|enroll\|save\|save_reconnect"}` |
+
+## mDNS: finding the device and the server
+
+While on WiFi the device answers multicast DNS for **`tank-xxxx.local`**
+(`xxxx` = last four hex digits of its MAC, so this board is
+`http://tank-ece4.local/`) and advertises the web UI as a `_http._tcp`
+service with TXT `id=<device_id>`, `fw=<version>`, `path=/`. Phones and
+laptops with Bonjour/Avahi resolve it directly; on Linux
+`avahi-resolve -n tank-ece4.local` or `avahi-browse -rt _http._tcp`.
+
+If the **server URL is left empty** (BLE `…0004`, web form, or no `API_URL` at
+build time) the device browses for the farm app instead of waiting to be
+told: it looks for a `_farmos._tcp` service, takes host and port from its SRV
+record and the path prefix from the TXT record `base=`, resolves the host's
+A record, and uses `http://<ip>:<port><base>` for enrolment and reports.
+It asks every 5 s until it finds one, then re-checks every 5 min, and
+immediately after a connection failure (so a server that moves is picked up
+again). A configured URL always wins over discovery; IPv6 is ignored.
+
+The Rails host advertises itself with Avahi. Drop this into
+`/etc/avahi/services/farmos.service` (the farm app repo ships it as
+`config/avahi/farmos.service`, and `bin/mdns` does the same without root for
+development):
+
+```xml
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name>farmos</name>
+  <service>
+    <type>_farmos._tcp</type>
+    <port>3000</port>
+    <txt-record>base=/api/v1</txt-record>
+  </service>
+</service-group>
+```
+
+Quick test without a file: `avahi-publish -s farmos _farmos._tcp 3000 base=/api/v1`.
 
 ## Report payload
 

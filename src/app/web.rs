@@ -20,7 +20,7 @@ use tank_core::FIRMWARE_VERSION;
 use tank_core::config::{ConfigPatch, PublicConfig};
 use tank_core::level::{Event, Level, LevelState};
 
-use crate::app::state::{COMMANDS, CONFIG, Command, DEVICE_ID, LEVEL, NET, REPORT, ReportError, display_name, unix_now, uptime_s};
+use crate::app::state::{COMMANDS, CONFIG, Command, DEVICE_ID, DISCOVERED, LEVEL, NET, REPORT, ReportError, display_name, mdns_hostname, unix_now, uptime_s};
 
 const INDEX_HTML: &str = include_str!("web/index.html");
 
@@ -43,6 +43,12 @@ struct Status {
     sampled_uptime_s: u64,
     calibrated: bool,
     unix_time: Option<u64>,
+    /// `tank-xxxx.local`, answered over mDNS while on WiFi.
+    mdns_name: String<24>,
+    /// Server base URL in use (configured, or discovered via mDNS).
+    server_url: Option<String<128>>,
+    /// Where `server_url` came from: `config` (typed, BLE or build default), `mdns`, `none`.
+    server_source: &'static str,
     report: ReportInfo,
 }
 
@@ -53,6 +59,8 @@ struct ReportInfo {
     last_ok_uptime_s: Option<u64>,
     last_error: Option<String<24>>,
     enrolled: bool,
+    /// Server address came from mDNS discovery.
+    discovered: bool,
 }
 
 fn report_error_name(e: ReportError) -> String<24> {
@@ -93,8 +101,27 @@ async fn status() -> impl IntoResponse {
         let _ = write!(s, "{ip}");
         s
     });
-    let calibrated = CONFIG.lock().await.tank.is_calibrated();
+    let (calibrated, configured_url) = {
+        let cfg = CONFIG.lock().await;
+        let mut u: String<128> = String::new();
+        let _ = u.push_str(cfg.api_base());
+        (cfg.tank.is_calibrated(), u)
+    };
     let rep = REPORT.try_get().unwrap_or_default();
+    let (server_url, server_source) = if !configured_url.is_empty() {
+        (Some(configured_url), "config")
+    } else {
+        match DISCOVERED.try_get().flatten() {
+            Some(d) => (Some(d.url()), "mdns"),
+            None => (None, "none"),
+        }
+    };
+    let mdns_name = {
+        let mut n: String<24> = String::new();
+        let _ = n.push_str(&mdns_hostname().await);
+        let _ = n.push_str(".local");
+        n
+    };
     // Take each lock in its own statement: a guard created inside the struct
     // literal would live for the whole expression and deadlock `display_name`.
     let device_id = DEVICE_ID.lock().await.clone();
@@ -115,12 +142,16 @@ async fn status() -> impl IntoResponse {
         sampled_uptime_s: snap.uptime_s,
         calibrated,
         unix_time: unix_now(),
+        mdns_name,
+        server_url,
+        server_source,
         report: ReportInfo {
             sent: rep.sent,
             queued: rep.queued,
             last_ok_uptime_s: rep.last_ok_uptime_s,
             last_error: rep.last_error.map(report_error_name),
             enrolled: rep.enrolled,
+            discovered: rep.discovered,
         },
     })
 }
