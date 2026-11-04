@@ -3,15 +3,16 @@
 Agreed between the firmware (this repo) and the Rails farm-management app on
 2026-10-31. Plain HTTP on the LAN; one request per TCP connection.
 
-`api_url` on the device is the API **base**, e.g. `http://10.10.1.16:3000/api/v1`;
+`api_url` on the device is the API **base**, e.g. `http://10.10.1.16:4000/api/v1`;
 the device appends `/devices/enroll` and `/tank_readings`. A legacy full
 `…/tank_readings` URL is accepted and normalised.
 
 ## Zero-touch enrolment
 
-The only thing a person enters on the device is WiFi (the base URL is a
-build-time default for the farm, overridable over BLE/web). Tokens are never
-typed: the device asks for one and the admin approves it in the farm app.
+The only thing a person enters on the device is WiFi. The base URL is a
+build-time default for the farm, overridable over BLE/web, or discovered on
+the LAN via mDNS when left empty (next section). Tokens are never typed: the
+device asks for one and the admin approves it in the farm app.
 
 ```
 POST <base>/devices/enroll            no Authorization header
@@ -43,10 +44,40 @@ up as a re-enrolment request in the admin UI.
 
 
 
+## Server discovery (mDNS / DNS-SD)
+
+Agreed 2026-11-03. The server host advertises, through avahi-daemon:
+
+| Record | Value |
+|---|---|
+| service type | `_farmos._tcp.local`, instance name `farmos` |
+| SRV | the host's own mDNS name (e.g. `fluteai.local`) and the port Rails listens on (4000 in the farm setup) |
+| TXT | `base=/api/v1` (path prefix the device appends `/tank_readings` and `/devices/enroll` to); unknown keys such as `v=1` are ignored |
+| A | the host's IPv4 on that interface; AAAA is published too and ignored by the device |
+
+Device side, only when `api_url` is empty:
+
+* Browse with a PTR query for `_farmos._tcp.local` every 5 s (starting as soon
+  as the URL is empty and a report is due) until an
+  instance with SRV + TXT + A is known. Avahi puts SRV/TXT/A in the additional
+  section of the PTR answer, so one round trip is enough; if any piece is
+  missing the device asks for it explicitly (SRV/TXT for the instance, then A
+  for the SRV target).
+* The result is held in RAM only, never written to flash; a reboot browses again.
+* After a result: re-browse every 5 min, and immediately after a connect or
+  timeout failure against the discovered address, so a moved server is found.
+* Browsing never gives up; with no advert on the network the device keeps
+  asking every 5 s (one 46-byte multicast packet) until one appears.
+* A configured `api_url` always takes precedence; discovery stops while one is set.
+* `GET /api/status` reports `server_url`, `server_source` (`config`, `mdns`,
+  `none`) and `report.discovered`.
+
+Nothing in the HTTP exchange differs between a discovered and a configured URL.
+
 ## Request
 
 ```
-POST <api_url>                       e.g. http://10.10.1.16:3000/api/v1/tank_readings
+POST <api_url>                       e.g. http://10.10.1.16:4000/api/v1/tank_readings
 Host: <host>
 Authorization: Bearer <api_token>    32 lowercase hex chars, issued per tank in the Rails UI
 Content-Type: application/json

@@ -4,6 +4,7 @@
 pub mod ble;
 pub mod control;
 pub mod level_task;
+pub mod mdns;
 pub mod reporter;
 pub mod state;
 pub mod storage;

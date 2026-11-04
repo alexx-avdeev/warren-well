@@ -173,7 +173,7 @@ history can be recomputed.
 ### Option A — Direct HTTP POST to a Rails JSON endpoint (**chosen**)
 
 ```
-POST http://<rails-host-or-ip>:3000/api/v1/tank_readings
+POST http://<rails-host-or-ip>:4000/api/v1/tank_readings
 Authorization: Bearer <per-device token>
 Content-Type: application/json
 
@@ -201,9 +201,11 @@ Content-Type: application/json
   `embedded-tls` stays behind an optional `tls` cargo feature for the day the
   server moves off-site.
 * **Addressing:** point the device at the Rails host's IP or a DHCP
-  reservation / router DNS name. Optional later: mDNS (`edge-mdns`) so the
-  device itself is reachable as `tank-xxxx.local` and Rails can link to its
-  local UI.
+  reservation / router DNS name, or leave it empty and let the device find
+  the server via DNS-SD (`_farmos._tcp`, advertised by Avahi on the Rails
+  host). The device itself answers as `tank-xxxx.local` and advertises
+  `_http._tcp`, so Rails can link to its local UI. Codec in
+  `tank-core::mdns` (own, ~400 lines; `edge-mdns` is a responder only).
 * **Cons:** device-initiated only. Server cannot wake the device instantly.
 * **Resilience:** `seq` makes the endpoint idempotent; the device keeps a
   ring buffer of unsent reports (RAM) and drains it when the link returns.
@@ -389,4 +391,5 @@ Still open (none block phase 1):
 | 2 ◐ | WiFi STA ✅, state machine + events ✅, reporter builds the JSON ✅ but **logs instead of POSTing**; config-from-reply, offline queue, battery ADC pending | transport, auth, alerts, power draw measured |
 | 3 ✅ | BLE provisioning service with calibrate commands; local web UI (no pairing / no HTTP auth yet) | management |
 | 4 | OTA partitions + update flow | field maintainability |
-| 5 | (as needed) light/deep sleep if phase 2 current is too high, DS18B20 + I2C sensors, mDNS, MQTT reporter, SoftAP portal, TLS | scale |
+| 5 | (as needed) light/deep sleep if phase 2 current is too high, DS18B20 + I2C sensors, MQTT reporter, SoftAP portal, TLS | scale |
+| B ✅ | mDNS: `tank-xxxx.local` + `_http._tcp` responder, `_farmos._tcp` browser for server discovery — verified on hardware against the farm app (2026-11-03) | zero-config |

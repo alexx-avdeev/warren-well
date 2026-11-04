@@ -22,10 +22,7 @@ use tank_core::FIRMWARE_VERSION;
 use tank_core::config::{EnrolReply, EnrolRequest, ServerReply};
 use tank_core::payload::{LevelReport, Report};
 
-use crate::app::state::{
-    BOOT_ID, COMMANDS, CONFIG, Command, DEVICE_ID, EVENTS, LEVEL, NET, REPORT, REPORT_NOW,
-    ReportError, ReportStatus, TIME_OFFSET, display_name, unix_now, uptime_s,
-};
+use crate::app::state::{BOOT_ID, COMMANDS, CONFIG, Command, DEVICE_ID, DISCOVERED, EVENTS, LEVEL, NET, REDISCOVER, REPORT, REPORT_NOW, ReportError, ReportStatus, TIME_OFFSET, display_name, unix_now, uptime_s};
 use crate::mk_static;
 
 pub const REPORT_BUF: usize = 512;
@@ -317,16 +314,28 @@ pub async fn reporter_task(mut http: HttpReporter) -> ! {
             }
         }
 
-        let (base, token) = {
+        let (base, token, discovered) = {
             let cfg = CONFIG.lock().await;
             let mut b: UrlBuf = UrlBuf::new();
             let _ = b.push_str(cfg.api_base());
-            (b, cfg.api_token.clone())
+            let mut discovered = false;
+            if b.is_empty() {
+                // Nothing configured: fall back to the server found via mDNS.
+                if let Some(Some(d)) = DISCOVERED.try_get() {
+                    b = d.url();
+                    discovered = true;
+                }
+            }
+            (b, cfg.api_token.clone(), discovered)
         };
         status.enrolled = !token.is_empty();
+        status.discovered = discovered;
         status.queued = queue.len() as u8;
 
         if base.is_empty() {
+            // Nothing configured and nothing found yet: make the mDNS task look
+            // now rather than at its next idle tick.
+            REDISCOVER.signal(());
             if let Some(b) = queue.back() {
                 info!("report (no server configured): {b}");
             }
@@ -355,6 +364,9 @@ pub async fn reporter_task(mut http: HttpReporter) -> ! {
                 Err((e, hint)) => {
                     status.last_error = Some(e);
                     publish.send(status);
+                    if discovered && matches!(e, ReportError::Connect | ReportError::Timeout) {
+                        REDISCOVER.signal(());
+                    }
                     let wait = hint.unwrap_or(backoff);
                     backoff = (backoff * 2).min(BACKOFF_MAX);
                     warn!("enrol failed ({e:?}); retry in {} s", wait.as_secs());
@@ -399,6 +411,10 @@ pub async fn reporter_task(mut http: HttpReporter) -> ! {
                         }
                     } else if matches!(e, ReportError::Connect | ReportError::Timeout | ReportError::ServerError(_)) {
                         backoff = (backoff * 2).min(BACKOFF_MAX);
+                        if discovered && e != ReportError::ServerError(0) {
+                            // The address came from mDNS; the server may have moved.
+                            REDISCOVER.signal(());
+                        }
                     }
                     warn!("report deferred ({e:?}); {} queued, retry in {} s", queue.len(), wait.as_secs());
                     retry_at = Some(Instant::now() + wait);
